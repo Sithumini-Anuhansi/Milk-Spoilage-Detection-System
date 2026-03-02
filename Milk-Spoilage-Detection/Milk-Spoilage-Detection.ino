@@ -51,3 +51,39 @@ void loop() {
 
   delay(2000); 
 }
+
+
+
+#define MQ135 A0      // MQ-135 connected to A0
+#define BUZZER 8      // Buzzer connected to D8 (optional)
+
+int threshold = 400;  // Adjust after testing
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(BUZZER, OUTPUT);
+  Serial.println("Milk Spoilage Detection System Started");
+}
+
+void loop() {
+  int gasValue = analogRead(MQ135);
+
+  Serial.print("Gas Sensor Value: ");
+  Serial.println(gasValue);
+
+  if (gasValue < 300) {
+    Serial.println("Milk Status: FRESH");
+    digitalWrite(BUZZER, LOW);
+  }
+  else if (gasValue >= 300 && gasValue < threshold) {
+    Serial.println("Milk Status: STARTING TO SPOIL");
+    digitalWrite(BUZZER, LOW);
+  }
+  else {
+    Serial.println("Milk Status: SPOILED");
+    digitalWrite(BUZZER, HIGH);
+  }
+
+  Serial.println("----------------------------");
+  delay(2000);
+}
