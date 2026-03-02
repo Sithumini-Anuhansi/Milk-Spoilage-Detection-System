@@ -6,26 +6,34 @@
 // Initialize pH Sensor
 DFRobot_PH ph;
 
- // Initialize DS18B20
-  sensors.begin();
-  Serial.println("DS18B20 Temperature Sensor Started...");
 
 // PH-4502C pH Sensor Pin
 #define PH_PIN 34   // Analog input
 
 // ----- DS18B20 Setup -----
 #define ONE_WIRE_BUS 32      // GPIO where DS18B20 data pin is connected
+
+#define MQ135 35              // MQ-135 Gas Sensor(Analog pin)
+#define BUZZER 25              // Buzzer
+
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 
 float phValue;
 float temperature = 25.0;   // Default temperature
+int threshold = 400;           // Gas threshold
 
 void setup() {
   Serial.begin(115200);
   ph.begin();
 
+  sensors.begin();
+
   Serial.println("pH Sensor Monitoring Started...");
+
+  Serial.println("MQ gas sensor monitoring started...");
+
+  pinMode(BUZZER, OUTPUT);
 }
 
 void loop() {
@@ -46,26 +54,8 @@ void loop() {
   Serial.print(temperature, 2);
   Serial.println(" °C");
 
-
-  Serial.println("-----------------------");
-
-  delay(2000); 
-}
-
-
-
-#define MQ135 A0      // MQ-135 connected to A0
-#define BUZZER 8      // Buzzer connected to D8 (optional)
-
-int threshold = 400;  // Adjust after testing
-
-void setup() {
-  Serial.begin(9600);
-  pinMode(BUZZER, OUTPUT);
-  Serial.println("Milk Spoilage Detection System Started");
-}
-
-void loop() {
+  // --- PART 2: Gas Sensor (Milk Spoilage) Logic ---
+  
   int gasValue = analogRead(MQ135);
 
   Serial.print("Gas Sensor Value: ");
@@ -84,6 +74,11 @@ void loop() {
     digitalWrite(BUZZER, HIGH);
   }
 
-  Serial.println("----------------------------");
-  delay(2000);
+  Serial.println("-----------------------");
+
+  delay(2000); // Wait 2 seconds before the next reading
+
 }
+
+
+
