@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>MilkGuard Dashboard</title>
+
+  <!-- Firebase compat SDK for Realtime Database -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <!-- Chart.js for gauge charts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    /* ===== Body Styles ===== */
+    body{
+      font-family:'Segoe UI', Arial;
+      margin:0;
+      padding:0;
+      text-align:center;
+      color:white;
+      overflow-x:hidden;
+    }
+
+    /* Background image with blur */
+    body::before{
+      content:"";
+      position:fixed;
+      top:0;
+      left:0;
+      width:100%;
+      height:100%;
+      background:url("Images/MilkGuard.png") no-repeat center center/cover;
+      filter:blur(2px); /* slight blur */
+      z-index:-1;
+    }
+
+    /* Semi-transparent overlay to darken background */
+    body::after{
+      content:"";
+      position:fixed;
+      top:0;
+      left:0;
+      width:100%;
+      height:100%;
+      background:rgba(0,0,0,0.35);
+      z-index:-1;
+    }
+
+    /* Page heading style */
+    h1{ margin-top:25px; font-size:38px; letter-spacing:1px; }
+
+    /* Container for cards (pH, Gas, Temp) */
+    .container{ display:flex; justify-content:center; gap:35px; margin-top:40px; flex-wrap:wrap; }
+
+    /* Card style */
+    .card{ 
+      background:rgba(255,255,255,0.15); /* semi-transparent background */
+      backdrop-filter:blur(8px); /* blur effect behind card */
+      border-radius:18px;
+      padding:25px;
+      width:240px;
+      box-shadow:0 8px 20px rgba(0,0,0,0.25);
+      transition:transform 0.3s;
+    }
+
+    /* Card hover effect */
+    .card:hover{ transform:scale(1.05); }
+
+    .card h3{ margin-bottom:5px; }
+
+    /* Chart canvas sizing */
+    canvas{ width:200px !important; height:200px !important; }
+
+    /* Milk status div */
+    .status{
+      font-size:30px;
+      margin-top:30px;
+      font-weight:bold;
+      padding:15px 25px;
+      border-radius:15px;
+      display:inline-block;
+      background:white;
+      color:black;
+    }
+
+    /* Status color classes */
+    .fresh{ background:#2ecc71;color:white; }
+    .warning{ background:#f39c12;color:white; }
+    .spoiled{ background:#e74c3c;color:white; }
+
+    /* Table styling */
+    table{
+      margin:auto;
+      margin-top:40px;
+      border-collapse:collapse;
+      width:70%;
+      background:white;
+      color:black;
+      border-radius:10px;
+      overflow:hidden;
+      box-shadow:0 8px 20px rgba(0,0,0,0.2);
+    }
+
+    th,td{ padding:12px; border-bottom:1px solid #ddd; }
+    th{ background:#333; color:white; }
+    tr:hover{ background:#f5f5f5; }
+  </style>
+</head>
+
+<body>
+
+<h1>MilkGuard Monitoring</h1>
+
+<!-- Cards for gauges -->
+<div class="container">
+  <div class="card">
+    <h3>pH Level</h3>
+    <canvas id="phGauge"></canvas>
+  </div>
+  <div class="card">
+    <h3>Gas Level</h3>
+    <canvas id="gasGauge"></canvas>
+  </div>
+  <div class="card">
+    <h3>Temperature</h3>
+    <canvas id="tempGauge"></canvas>
+  </div>
+</div>
+
+<!-- Milk status display -->
+<div class="status" id="milkStatus">Loading...</div>
+
+<!-- Historical readings table -->
+<table>
+  <thead>
+    <tr>
+      <th>pH</th>
+      <th>Gas</th>
+      <th>Temperature</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody id="tableData"></tbody>
+</table>
+
+<script>
+  // ===== Firebase Configuration =====
+  const firebaseConfig = {
+    apiKey: "AIzaSyBncEI1ToSsh8_ER2D-GC7Fiard_mE7vBw",
+    authDomain: "milkguard-system.firebaseapp.com",
+    databaseURL: "https://milkguard-system-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "milkguard-system",
+    storageBucket: "milkguard-system.firebasestorage.app",
+    messagingSenderId: "222501550015",
+    appId: "1:222501550015:web:21a292cf2b19d6a60ad30a",
+    measurementId: "G-L3WJ60JD4M"
+  };
+
+  // Initialize Firebase app and database
+  const app = firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  // ===== Chart.js Plugin to show value in the center of gauge =====
+  const gaugeLabelPlugin = {
+    id: 'gaugeLabel',
+    afterDraw(chart) {
+      const {ctx, chartArea: {width, height}} = chart;
+      ctx.save();
+      ctx.font = 'bold 20px Arial';
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const value = chart.data.datasets[0].valueLabel || 0; // Read value label
+      ctx.fillText(value, width/2, height/1.3); // Draw value at center
+    }
+  };
+
+  // ===== Function to create a semi-circular gauge =====
+  function createGauge(id, max, color){
+    return new Chart(document.getElementById(id),{
+      type:'doughnut', // semi-circle
+      data:{ datasets:[{ data:[0,max], backgroundColor:[color,'#eee'], borderWidth:0, valueLabel:0 }] },
+      options:{ 
+        rotation:-90, // start from left
+        circumference:180, // half-circle
+        cutout:'70%', // inner radius
+        plugins:{legend:{display:false}} // hide legend
+      },
+      plugins:[gaugeLabelPlugin]
+    });
+  }
+
+  // Create gauges with max values and colors
+  let phGauge = createGauge("phGauge", 14, "#3498db");
+  let gasGauge = createGauge("gasGauge", 1600, "#9b59b6");
+  let tempGauge = createGauge("tempGauge", 100, "#e67e22");
+
+  // ===== Fetch last 10 readings from Firebase =====
+  db.ref("MilkGuard/history").limitToLast(10).on("value", (snap) => {
+    const data = snap.val();
+    if(!data) return; // No data yet
+
+    const readings = Object.values(data);
+    let tableHTML = "";
+    let sumPH = 0, sumGas = 0, sumTemp = 0;
+
+    // Build table rows and calculate sums
+    readings.forEach(r => {
+      tableHTML += `<tr>
+        <td>${r.pH.toFixed(2)}</td>
+        <td>${r.gas}</td>
+        <td>${r.temp.toFixed(1)}</td>
+        <td>${r.status}</td>
+      </tr>`;
+      sumPH += r.pH;
+      sumGas += r.gas;
+      sumTemp += r.temp;
+    });
+
+    // Update table
+    document.getElementById("tableData").innerHTML = tableHTML;
+
+    // Calculate averages
+    let avgPH = sumPH / readings.length;
+    let avgGas = sumGas / readings.length;
+    let avgTemp = sumTemp / readings.length;
+
+    // Update gauges with averages
+    phGauge.data.datasets[0].data = [avgPH, 14 - avgPH];
+    phGauge.data.datasets[0].valueLabel = avgPH.toFixed(2);
+    phGauge.update();
+
+    gasGauge.data.datasets[0].data = [avgGas, 1600 - avgGas];
+    gasGauge.data.datasets[0].valueLabel = avgGas.toFixed(0);
+    gasGauge.update();
+
+    tempGauge.data.datasets[0].data = [avgTemp, 100 - avgTemp];
+    tempGauge.data.datasets[0].valueLabel = avgTemp.toFixed(1);
+    tempGauge.update();
+
+    // Update milk status div with latest reading
+    const latest = readings[readings.length-1];
+    let statusDiv = document.getElementById("milkStatus");
+    statusDiv.innerHTML = "Milk Status: " + latest.status;
+
+    // Remove previous status classes
+    statusDiv.classList.remove("fresh","warning","spoiled");
+
+    // Add class based on latest status
+    if(latest.status=="Fresh") statusDiv.classList.add("fresh");
+    if(latest.status=="Warning") statusDiv.classList.add("warning");
+    if(latest.status=="Spoiled") statusDiv.classList.add("spoiled");
+  });
+</script>
+
+</body>
+</html>
